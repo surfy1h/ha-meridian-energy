@@ -3,9 +3,7 @@
 	"country": [
 		"NZ"
 	],
-	"filename": "meridian_energy.zip",
-	"hide_default_branch": true,
 	"render_readme": true,
-	"zip_release": true,
-	"homeassistant": "2023.12.0"
+	"homeassistant": "2023.12.0",
+	"zip_release": false
 }
