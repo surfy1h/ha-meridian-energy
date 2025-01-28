@@ -6,5 +6,6 @@
 	"filename": "meridian_energy.zip",
 	"hide_default_branch": true,
 	"render_readme": true,
-	"zip_release": true
+	"zip_release": true,
+	"homeassistant": "2023.12.0"
 }
