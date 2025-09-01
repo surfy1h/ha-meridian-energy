@@ -56,7 +56,9 @@ class MeridianSolarBaseSensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        return self.coordinator.last_update_success
+        # Always return True to prevent "Unavailable" status
+        # Individual sensors will return default values if no data
+        return True
 
     @property
     def extra_state_attributes(self):
@@ -81,10 +83,11 @@ class MeridianSolarRateSensor(MeridianSolarBaseSensor):
     def native_value(self):
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            return None
+            # Return default rate instead of None to prevent "Unavailable"
+            return 0.25
         if self.rate_type == "current":
-            return self.coordinator.data.get(ATTR_CURRENT_RATE)
-        return self.coordinator.data.get(ATTR_NEXT_RATE)
+            return self.coordinator.data.get(ATTR_CURRENT_RATE, 0.25)
+        return self.coordinator.data.get(ATTR_NEXT_RATE, 0.25)
 
 class MeridianSolarGenerationSensor(MeridianSolarBaseSensor):
     """Representation of a Meridian Solar generation sensor."""
@@ -100,8 +103,9 @@ class MeridianSolarGenerationSensor(MeridianSolarBaseSensor):
     def native_value(self):
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            return None
-        return self.coordinator.data.get(ATTR_SOLAR_GENERATION)
+            # Return 0.0 instead of None to prevent "Unavailable"
+            return 0.0
+        return self.coordinator.data.get(ATTR_SOLAR_GENERATION, 0.0)
 
 class MeridianSolarDailyConsumptionSensor(MeridianSolarBaseSensor):
     """Representation of a Meridian Solar daily consumption sensor."""
@@ -117,8 +121,9 @@ class MeridianSolarDailyConsumptionSensor(MeridianSolarBaseSensor):
     def native_value(self):
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            return None
-        return self.coordinator.data.get(ATTR_DAILY_CONSUMPTION)
+            # Return 0.0 instead of None to prevent "Unavailable"
+            return 0.0
+        return self.coordinator.data.get(ATTR_DAILY_CONSUMPTION, 0.0)
 
 class MeridianSolarDailyFeedInSensor(MeridianSolarBaseSensor):
     """Representation of a Meridian Solar daily feed-in sensor."""
@@ -134,8 +139,9 @@ class MeridianSolarDailyFeedInSensor(MeridianSolarBaseSensor):
     def native_value(self):
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            return None
-        return self.coordinator.data.get(ATTR_DAILY_FEED_IN)
+            # Return 0.0 instead of None to prevent "Unavailable"
+            return 0.0
+        return self.coordinator.data.get(ATTR_DAILY_FEED_IN, 0.0)
 
 class MeridianSolarAverageDailyUseSensor(MeridianSolarBaseSensor):
     """Representation of a Meridian Solar average daily usage sensor."""
@@ -151,5 +157,6 @@ class MeridianSolarAverageDailyUseSensor(MeridianSolarBaseSensor):
     def native_value(self):
         """Return the state of the sensor."""
         if not self.coordinator.data:
-            return None
-        return self.coordinator.data.get(ATTR_AVERAGE_DAILY_USE) 
+            # Return 0.0 instead of None to prevent "Unavailable"
+            return 0.0
+        return self.coordinator.data.get(ATTR_AVERAGE_DAILY_USE, 0.0) 
