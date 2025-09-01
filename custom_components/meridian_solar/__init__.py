@@ -646,13 +646,21 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug(f"Error parsing CSV line: {e}")
                     continue
             
-            # Get average daily usage from usage chart
+            # Calculate average daily usage from CSV data and/or usage chart
             try:
-                usage_chart_data = await self._extract_usage_chart_data()
-                if "average_daily_use" in usage_chart_data:
-                    data["average_daily_use"] = usage_chart_data["average_daily_use"]
+                # First try to calculate from CSV historical data
+                csv_average = await self._calculate_average_from_csv(lines)
+                if csv_average > 0:
+                    data["average_daily_use"] = csv_average
+                    _LOGGER.debug(f"Calculated average daily use from CSV: {csv_average:.2f} kWh")
+                else:
+                    # Fallback to usage chart extraction
+                    usage_chart_data = await self._extract_usage_chart_data()
+                    if "average_daily_use" in usage_chart_data:
+                        data["average_daily_use"] = usage_chart_data["average_daily_use"]
+                        _LOGGER.debug(f"Got average daily use from usage chart: {usage_chart_data['average_daily_use']:.2f} kWh")
             except Exception as e:
-                _LOGGER.debug(f"Could not get usage chart data: {e}")
+                _LOGGER.debug(f"Could not get usage data: {e}")
             
             # If no data found for today, try to get most recent data
             if data['daily_consumption'] == 0.0 and data['daily_feed_in'] == 0.0:
@@ -744,14 +752,23 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                         # Extract real rate information
                         rates = await self._extract_rate_information()
                         
+                        # Try to extract usage data from dashboard page scraping
+                        dashboard_usage = await self._extract_usage_from_dashboard()
+                        
+                        # Combine usage data from multiple sources
+                        average_daily_use = (
+                            usage_data.get("average_daily_use", 0.0) or 
+                            dashboard_usage.get("average_daily_use", 0.0)
+                        )
+                        
                         # Return basic data structure with any found usage data and real rates
                         return {
                             "current_rate": rates["current_rate"],
                             "next_rate": rates["next_rate"],
                             "solar_generation": 0.0,
-                            "daily_consumption": 0.0,
-                            "daily_feed_in": 0.0,
-                            "average_daily_use": usage_data.get("average_daily_use", 0.0),
+                            "daily_consumption": dashboard_usage.get("daily_consumption", 0.0),
+                            "daily_feed_in": dashboard_usage.get("daily_feed_in", 0.0),
+                            "average_daily_use": average_daily_use,
                         }
                         
             except Exception as portal_err:
@@ -921,6 +938,137 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.warning("⚠️ Could not extract real rates, using default 0.25 $/kWh")
         
         return rates
+
+    async def _calculate_average_from_csv(self, csv_lines: list[str]) -> float:
+        """Calculate average daily consumption from CSV historical data."""
+        _LOGGER.debug("📊 Calculating average daily usage from CSV historical data...")
+        
+        daily_consumption_values = []
+        
+        for line in csv_lines[1:]:  # Skip header
+            if not line.strip():
+                continue
+                
+            parts = line.split(',')
+            if len(parts) < 52:  # Need enough columns
+                continue
+            
+            try:
+                meter_element = parts[2]  # Feed-in or Consumption
+                date = parts[3]
+                
+                # Only process consumption data
+                if meter_element == "Consumption":
+                    # Sum the 48 half-hour values (columns 4-51)
+                    half_hour_values = []
+                    for i in range(4, min(52, len(parts))):
+                        try:
+                            value = float(parts[i])
+                            half_hour_values.append(value)
+                        except ValueError:
+                            half_hour_values.append(0.0)
+                    
+                    daily_total = sum(half_hour_values)
+                    if daily_total > 0:  # Only count days with actual usage
+                        daily_consumption_values.append(daily_total)
+                        _LOGGER.debug(f"Day {date}: {daily_total:.2f} kWh consumption")
+                        
+            except (ValueError, IndexError):
+                continue
+        
+        if daily_consumption_values:
+            # Calculate average from available data
+            average = sum(daily_consumption_values) / len(daily_consumption_values)
+            _LOGGER.info(f"✅ Calculated average daily usage from {len(daily_consumption_values)} days: {average:.2f} kWh")
+            return round(average, 2)
+        else:
+            _LOGGER.warning("⚠️ No consumption data found in CSV for average calculation")
+            return 0.0
+
+    async def _extract_usage_from_dashboard(self) -> dict[str, float]:
+        """Extract usage information directly from dashboard page."""
+        _LOGGER.debug("📊 Extracting usage data from dashboard page...")
+        
+        if not self._logged_in:
+            await self._authenticate()
+        
+        usage_data = {
+            "daily_consumption": 0.0,
+            "daily_feed_in": 0.0,
+            "average_daily_use": 0.0,
+        }
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": self.dashboard_url
+        }
+        
+        try:
+            async with self._session.get(self.dashboard_url, headers=headers) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    _LOGGER.debug(f"Dashboard page size: {len(html)} bytes")
+                    
+                    # Enhanced patterns for usage extraction
+                    usage_patterns = [
+                        # Daily usage patterns
+                        (r'today[^>]*[:\s]*(\d+\.?\d*)\s*kWh', 'today usage'),
+                        (r'daily[^>]*use[^>]*[:\s]*(\d+\.?\d*)\s*kWh', 'daily use'),
+                        (r'consumption[^>]*[:\s]*(\d+\.?\d*)\s*kWh', 'consumption'),
+                        (r'used[^>]*[:\s]*(\d+\.?\d*)\s*kWh', 'used'),
+                        
+                        # Average patterns
+                        (r'average[^>]*[:\s]*(\d+\.?\d*)\s*kWh', 'average usage'),
+                        (r'(\d+\.?\d*)\s*kWh[^>]*average', 'kWh average'),
+                        (r'monthly[^>]*average[^>]*[:\s]*(\d+\.?\d*)', 'monthly average'),
+                        
+                        # Dashboard specific patterns
+                        (r'class="usage"[^>]*>(\d+\.?\d*)', 'usage class'),
+                        (r'data-usage="(\d+\.?\d*)"', 'usage data attribute'),
+                        (r'"usage"[:\s]*(\d+\.?\d*)', 'JSON usage'),
+                        
+                        # General energy patterns
+                        (r'(\d+\.?\d*)\s*kWh[^>]*day', 'kWh per day'),
+                        (r'(\d+\.?\d*)\s*kWh[^>]*consumption', 'kWh consumption'),
+                        
+                        # Table patterns
+                        (r'<td[^>]*>(\d+\.?\d*)\s*kWh</td>', 'table cell kWh'),
+                    ]
+                    
+                    found_values = []
+                    for pattern, description in usage_patterns:
+                        matches = re.findall(pattern, html, re.IGNORECASE)
+                        for match in matches:
+                            try:
+                                value = float(match)
+                                # Reasonable daily usage range for NZ household (5-50 kWh/day)
+                                if 5.0 <= value <= 50.0:
+                                    found_values.append(value)
+                                    _LOGGER.debug(f"Found usage value: {value} kWh ({description})")
+                            except ValueError:
+                                continue
+                    
+                    if found_values:
+                        # Use the median value to avoid outliers
+                        import statistics
+                        if len(found_values) == 1:
+                            usage_value = found_values[0]
+                        else:
+                            usage_value = statistics.median(found_values)
+                        
+                        # Assign to appropriate fields
+                        usage_data["average_daily_use"] = round(usage_value, 2)
+                        _LOGGER.info(f"✅ Extracted usage from dashboard: {usage_value:.2f} kWh (from {len(found_values)} values)")
+                    else:
+                        _LOGGER.debug("⚠️ No usage values found on dashboard")
+                        
+                else:
+                    _LOGGER.debug(f"Dashboard not accessible: {response.status}")
+                    
+        except Exception as e:
+            _LOGGER.debug(f"Error extracting dashboard usage: {e}")
+        
+        return usage_data
 
     async def _async_update_data(self):
         """Fetch data from Meridian Customer Portal."""
