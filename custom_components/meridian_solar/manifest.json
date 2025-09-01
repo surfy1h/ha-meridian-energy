@@ -1,9 +1,10 @@
 {
   "domain": "meridian_solar",
   "name": "Meridian Solar",
-  "documentation": "https://github.com/yourusername/ha-meridian-solar",
+  "documentation": "https://github.com/surfy1h/ha-meridian-energy",
+  "issue_tracker": "https://github.com/surfy1h/ha-meridian-energy/issues",
   "dependencies": [],
-  "codeowners": ["@yourusername"],
+  "codeowners": ["@surfy1h"],
   "requirements": ["aiohttp>=3.9.0"],
   "iot_class": "cloud_polling",
   "version": "2.1.0",

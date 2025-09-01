@@ -2,6 +2,20 @@
 
 A Home Assistant custom component for integrating with Meridian Energy's solar plan in New Zealand. This integration extracts real-time electricity rates and solar generation data from your Meridian Energy customer portal.
 
+[![GitHub Release][releases-shield]][releases]
+[![GitHub Activity][commits-shield]][commits]
+[![License][license-shield]](LICENSE)
+[![hacs][hacsbadge]][hacs]
+
+![Project Maintenance][maintenance-shield]
+[![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
+
+**This component will set up the following platforms.**
+
+Platform | Description
+-- | --
+`sensor` | Show info from Meridian Energy API.
+
 ## ⚠️ Important Notice
 
 This integration uses **web scraping** to extract data from the Meridian Energy customer portal since no public API is available. The integration:
@@ -25,16 +39,25 @@ This integration uses **web scraping** to extract data from the Meridian Energy 
 
 ## Installation
 
-### HACS (Recommended)
+### HACS (Home Assistant Community Store) - Recommended
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=surfy1h&repository=ha-meridian-energy&category=integration)
+
+#### Option 1: Add via HACS Default (Coming Soon)
+*This integration will be submitted to HACS default repositories for easy installation.*
+
+#### Option 2: Add as Custom Repository
 1. Open HACS in Home Assistant
-2. Go to "Integrations"
+2. Go to "Integrations"  
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add this repository URL: `https://github.com/yourusername/ha-meridian-solar`
+5. Add this repository URL: `https://github.com/surfy1h/ha-meridian-energy`
 6. Select "Integration" as the category
 7. Click "Add"
 8. Search for "Meridian Solar" and install
+9. Restart Home Assistant
+
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 
 ### Manual Installation
 
@@ -160,7 +183,7 @@ logger:
 
 ## Support
 
-For issues and feature requests, please use the [GitHub Issues](https://github.com/yourusername/ha-meridian-solar/issues) page.
+For issues and feature requests, please use the [GitHub Issues](https://github.com/surfy1h/ha-meridian-energy/issues) page.
 
 When reporting issues, please include:
 - Home Assistant logs with debug enabled
@@ -176,3 +199,19 @@ The integration is designed to be respectful of the portal resources and uses re
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+[meridian_solar]: https://github.com/surfy1h/ha-meridian-energy
+[buymecoffee]: https://www.buymeacoffee.com/surfy1h
+[buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
+[commits-shield]: https://img.shields.io/github/commit-activity/y/surfy1h/ha-meridian-energy.svg?style=for-the-badge
+[commits]: https://github.com/surfy1h/ha-meridian-energy/commits/main
+[hacs]: https://github.com/custom-components/hacs
+[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
+[forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge
+[forum]: https://community.home-assistant.io/
+[license-shield]: https://img.shields.io/github/license/surfy1h/ha-meridian-energy.svg?style=for-the-badge
+[maintenance-shield]: https://img.shields.io/badge/maintainer-%40surfy1h-blue.svg?style=for-the-badge
+[releases-shield]: https://img.shields.io/github/release/surfy1h/ha-meridian-energy.svg?style=for-the-badge
+[releases]: https://github.com/surfy1h/ha-meridian-energy/releases

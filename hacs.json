@@ -1,0 +1,9 @@
+{
+  "name": "Meridian Solar",
+  "content_in_root": false,
+  "domains": ["meridian_solar"],
+  "country": ["NZ"],
+  "homeassistant": "2024.1.0",
+  "iot_class": "cloud_polling",
+  "render_readme": true
+}

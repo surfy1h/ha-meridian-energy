@@ -1,6 +1,6 @@
 {
-    "username": "jonosm@protonmail.com",
-    "password": "Infowars01#",
+    "username": "your-email@example.com",
+    "password": "your-password",
     "test_settings": {
         "history_days": 7,
         "timeout_seconds": 30,
