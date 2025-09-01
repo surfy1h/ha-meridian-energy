@@ -75,7 +75,7 @@ class MeridianSolarRateSensor(MeridianSolarBaseSensor):
         self.rate_type = rate_type
         self._attr_native_unit_of_measurement = "$/kWh"
         self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_state_class = None  # Monetary sensors should not use measurement state class
 
     @property
     def native_value(self):
