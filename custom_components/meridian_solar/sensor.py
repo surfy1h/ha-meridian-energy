@@ -63,9 +63,21 @@ class MeridianSolarBaseSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Return additional state attributes."""
+        # Safely get coordinator attributes with fallbacks
+        last_update = None
+        if hasattr(self.coordinator, 'last_update_success_time') and self.coordinator.last_update_success_time:
+            last_update = self.coordinator.last_update_success_time.isoformat()
+        elif hasattr(self.coordinator, 'last_update_success'):
+            last_update = str(self.coordinator.last_update_success)
+        
+        update_interval = None
+        if hasattr(self.coordinator, 'update_interval'):
+            update_interval = str(self.coordinator.update_interval)
+        
         return {
-            "last_update": self.coordinator.last_update_success_time,
-            "update_interval": self.coordinator.update_interval,
+            "last_update": last_update,
+            "update_interval": update_interval,
+            "integration_version": "2.2.5",
         }
 
 class MeridianSolarRateSensor(MeridianSolarBaseSensor):
