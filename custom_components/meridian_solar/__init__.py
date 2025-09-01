@@ -39,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Get scan interval from options or use default
     scan_interval = timedelta(minutes=entry.options.get("scan_interval", 30))
-    
+
     coordinator = MeridianSolarDataUpdateCoordinator(
         hass,
         username=entry.data[CONF_USERNAME],
@@ -48,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     try:
-        await coordinator.async_config_entry_first_refresh()
+    await coordinator.async_config_entry_first_refresh()
     except UpdateFailed as err:
         raise ConfigEntryNotReady(f"Failed to connect to Meridian Energy: {err}") from err
 
@@ -149,7 +149,7 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
         """Get the login page and extract CSRF token."""
         if not self._session:
             self._session = aiohttp.ClientSession()
-        
+            
         _LOGGER.debug("Getting login page...")
         
         # First discover the correct login URL
@@ -290,7 +290,7 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                     else:
                         error_text = await response.text()
                         _LOGGER.error(f"Authentication failed: {error_text[:200]}...")
-                        raise UpdateFailed(f"Authentication failed: {response.status}")
+                    raise UpdateFailed(f"Authentication failed: {response.status}")
                     
         except Exception as err:
             _LOGGER.error(f"Authentication error: {err}")
@@ -408,8 +408,8 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                                         break
                                     except (ValueError, IndexError):
                                         continue
-                        
-                        return usage_data
+                    
+                    return usage_data
                     else:
                         _LOGGER.warning("Usage chart page accessible but no usage indicators found")
                         return {}
@@ -514,37 +514,61 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
         
         if not self._logged_in:
             await self._authenticate()
-            
+        
         try:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                 "Referer": "https://secure.meridianenergy.co.nz/feed_in_report"
             }
             
-            # Try common CSV download URLs
+            # Try comprehensive list of CSV download URLs - be aggressive like test project
             csv_urls = [
                 "https://secure.meridianenergy.co.nz/feed_in_report.csv",
                 "https://secure.meridianenergy.co.nz/feed_in_report/download",
                 "https://secure.meridianenergy.co.nz/feed_in_report/export",
-                "https://secure.meridianenergy.co.nz/customers/feed_in_report.csv"
+                "https://secure.meridianenergy.co.nz/customers/feed_in_report.csv",
+                "https://secure.meridianenergy.co.nz/usage.csv",
+                "https://secure.meridianenergy.co.nz/usage/download", 
+                "https://secure.meridianenergy.co.nz/usage/export",
+                "https://secure.meridianenergy.co.nz/data/download",
+                "https://secure.meridianenergy.co.nz/data/export",
+                "https://secure.meridianenergy.co.nz/reports/download",
+                "https://secure.meridianenergy.co.nz/reports/export",
+                "https://secure.meridianenergy.co.nz/solar/download",
+                "https://secure.meridianenergy.co.nz/solar/export",
+                "https://secure.meridianenergy.co.nz/generation/download",
+                "https://secure.meridianenergy.co.nz/generation/export"
             ]
             
             for csv_url in csv_urls:
                 try:
-                    async with self._session.get(csv_url, headers=headers) as response:
+                async with self._session.get(csv_url, headers=headers) as response:
                         _LOGGER.debug(f"Trying {csv_url}: {response.status}")
                         
                         if response.status == 200:
                             content_type = response.headers.get('content-type', '')
-                            if 'csv' in content_type.lower() or 'text' in content_type.lower():
-                                csv_data = await response.text()
+                            csv_data = await response.text()
+                            
+                            # More aggressive CSV detection - check content regardless of content-type
+                            if ('csv' in content_type.lower() or 'text' in content_type.lower() or 
+                                'application/octet-stream' in content_type.lower() or
+                                ',' in csv_data or 'Date,Time' in csv_data or 'Feed-in' in csv_data or
+                                'Consumption' in csv_data or len(csv_data) > 100):
+                                
                                 lines = csv_data.split('\n')[:5]  # First 5 lines
                                 _LOGGER.debug(f"CSV download successful! Content-Type: {content_type}")
                                 _LOGGER.debug("First few lines:")
                                 for i, line in enumerate(lines):
                                     if line.strip():
                                         _LOGGER.debug(f"{i+1}: {line[:100]}...")  # First 100 chars
-                                return {"csv_data": csv_data}
+                                
+                                # Validate it looks like CSV data
+                                if any(',' in line for line in lines if line.strip()):
+                                    return {"csv_data": csv_data}
+                                else:
+                                    _LOGGER.debug(f"Content doesn't look like CSV: {csv_data[:200]}...")
+                            else:
+                                _LOGGER.debug(f"Content type/format not recognized as CSV: {content_type}, length: {len(csv_data)}")
                                 
                 except Exception as e:
                     _LOGGER.debug(f"Error trying {csv_url}: {e}")
@@ -564,93 +588,98 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
         if not self._logged_in:
             await self._authenticate()
         
-        # First test if we can access the solar data page and find CSV download
-        solar_data = await self._test_get_solar_data()
-        if not solar_data:
-            _LOGGER.warning("No solar data indicators found")
-        
-        # Test CSV download
+        # Try CSV download directly - be aggressive like the test project
+        _LOGGER.debug("Attempting direct CSV download...")
         csv_result = await self._test_csv_download()
+        
         if not csv_result.get("csv_data"):
-            raise UpdateFailed("Could not download CSV data")
+            # If direct CSV fails, try to find CSV links on the solar page
+            _LOGGER.debug("Direct CSV failed, checking solar page for download links...")
+            solar_data = await self._test_get_solar_data()
+            if solar_data:
+                _LOGGER.debug("Found solar page, retrying CSV download...")
+                csv_result = await self._test_csv_download()
+            
+            if not csv_result.get("csv_data"):
+                raise UpdateFailed("Could not download CSV data from any source")
         
         try:
             csv_data = csv_result["csv_data"]
-            self._retry_count = 0
-            
-            # Parse CSV data
-            lines = csv_data.strip().split('\n')
-            if len(lines) < 2:
-                raise UpdateFailed("CSV data is empty or invalid")
-            
-            # Initialize data
-            data = {
-                "current_rate": 0.25,  # Default rate estimate
-                "next_rate": 0.25,
-                "solar_generation": 0.0,
-                "daily_consumption": 0.0,
-                "daily_feed_in": 0.0,
-                "average_daily_use": 0.0,
-            }
-            
-            # Parse CSV lines (skip header)
-            today = datetime.now().strftime("%-d/%-m/%Y")  # Format: 21/1/2025
-            
-            for line in lines[1:]:
-                if not line.strip():
-                    continue
+                    self._retry_count = 0
                     
-                parts = line.split(',')
-                if len(parts) < 52:  # Header + 48 half-hour periods + extras
-                    continue
-                
-                try:
-                    meter_element = parts[2]  # Feed-in or Consumption
-                    date = parts[3]
+                    # Parse CSV data
+                    lines = csv_data.strip().split('\n')
+                    if len(lines) < 2:
+                        raise UpdateFailed("CSV data is empty or invalid")
                     
-                    # Only process today's data
-                    if date != today:
-                        continue
+                    # Initialize data
+                    data = {
+                        "current_rate": 0.25,  # Default rate estimate
+                        "next_rate": 0.25,
+                        "solar_generation": 0.0,
+                        "daily_consumption": 0.0,
+                        "daily_feed_in": 0.0,
+                        "average_daily_use": 0.0,
+                    }
                     
-                    # Sum the 48 half-hour values (columns 4-51)
-                    half_hour_values = []
-                    for i in range(4, min(52, len(parts))):
-                        try:
-                            value = float(parts[i])
-                            half_hour_values.append(value)
-                        except (ValueError, IndexError):
-                            half_hour_values.append(0.0)
+                    # Parse CSV lines (skip header)
+                    today = datetime.now().strftime("%-d/%-m/%Y")  # Format: 21/1/2025
                     
-                    daily_total = sum(half_hour_values)
-                    
-                    if meter_element == "Feed-in":
-                        data["daily_feed_in"] = daily_total
-                        # Current generation is the latest non-zero value
-                        for value in reversed(half_hour_values):
-                            if value > 0:
-                                data["solar_generation"] = value
-                                break
-                    elif meter_element == "Consumption":
-                        data["daily_consumption"] = daily_total
+                    for line in lines[1:]:
+                        if not line.strip():
+                            continue
+                            
+                        parts = line.split(',')
+                        if len(parts) < 52:  # Header + 48 half-hour periods + extras
+                            continue
                         
-                except (ValueError, IndexError) as e:
-                    _LOGGER.debug(f"Error parsing CSV line: {e}")
-                    continue
-            
-            # Get average daily usage from usage chart
-            try:
-                usage_chart_data = await self._extract_usage_chart_data()
-                if "average_daily_use" in usage_chart_data:
-                    data["average_daily_use"] = usage_chart_data["average_daily_use"]
-            except Exception as e:
-                _LOGGER.debug(f"Could not get usage chart data: {e}")
-            
-            _LOGGER.debug(f"Parsed CSV data: daily_feed_in={data['daily_feed_in']}, "
-                        f"daily_consumption={data['daily_consumption']}, "
-                        f"current_generation={data['solar_generation']}, "
-                        f"average_daily_use={data['average_daily_use']}")
-            
-            return data
+                        try:
+                            meter_element = parts[2]  # Feed-in or Consumption
+                            date = parts[3]
+                            
+                            # Only process today's data
+                            if date != today:
+                                continue
+                            
+                            # Sum the 48 half-hour values (columns 4-51)
+                            half_hour_values = []
+                            for i in range(4, min(52, len(parts))):
+                                try:
+                                    value = float(parts[i])
+                                    half_hour_values.append(value)
+                                except (ValueError, IndexError):
+                                    half_hour_values.append(0.0)
+                            
+                            daily_total = sum(half_hour_values)
+                            
+                            if meter_element == "Feed-in":
+                                data["daily_feed_in"] = daily_total
+                                # Current generation is the latest non-zero value
+                                for value in reversed(half_hour_values):
+                                    if value > 0:
+                                        data["solar_generation"] = value
+                                        break
+                            elif meter_element == "Consumption":
+                                data["daily_consumption"] = daily_total
+                                
+                        except (ValueError, IndexError) as e:
+                            _LOGGER.debug(f"Error parsing CSV line: {e}")
+                            continue
+                    
+                    # Get average daily usage from usage chart
+                    try:
+                        usage_chart_data = await self._extract_usage_chart_data()
+                        if "average_daily_use" in usage_chart_data:
+                            data["average_daily_use"] = usage_chart_data["average_daily_use"]
+                    except Exception as e:
+                        _LOGGER.debug(f"Could not get usage chart data: {e}")
+                    
+                    _LOGGER.debug(f"Parsed CSV data: daily_feed_in={data['daily_feed_in']}, "
+                                f"daily_consumption={data['daily_consumption']}, "
+                                f"current_generation={data['solar_generation']}, "
+                                f"average_daily_use={data['average_daily_use']}")
+                    
+                    return data
                     
         except Exception as err:
             raise UpdateFailed(f"Error extracting data from CSV: {err}")
@@ -684,14 +713,17 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                         # Try to get usage data from usage chart page
                         usage_data = await self._extract_usage_chart_data()
                         
-                        # Return basic data structure with any found usage data
+                        # Try to extract any energy data from dashboard and other pages
+                        scraped_data = await self._scrape_energy_data_from_pages()
+                        
+                        # Combine all found data
                         return {
-                            "current_rate": 0.25,
-                            "next_rate": 0.25,
-                            "solar_generation": 0.0,
-                            "daily_consumption": 0.0,
-                            "daily_feed_in": 0.0,
-                            "average_daily_use": usage_data.get("average_daily_use", 0.0),
+                            "current_rate": scraped_data.get("current_rate", 0.25),
+                            "next_rate": scraped_data.get("next_rate", 0.25),
+                            "solar_generation": scraped_data.get("solar_generation", 0.0),
+                            "daily_consumption": scraped_data.get("daily_consumption", 0.0),
+                            "daily_feed_in": scraped_data.get("daily_feed_in", 0.0),
+                            "average_daily_use": usage_data.get("average_daily_use", scraped_data.get("average_daily_use", 0.0)),
                         }
                         
             except Exception as portal_err:
@@ -754,7 +786,111 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error(f"Endpoint discovery error: {e}")
             return False
 
-
+    async def _scrape_energy_data_from_pages(self) -> dict[str, Any]:
+        """Aggressively scrape energy data from all available pages - like test project."""
+        _LOGGER.debug("Aggressively scraping energy data from all pages...")
+        
+        data = {
+            "current_rate": 0.25,
+            "next_rate": 0.25,
+            "solar_generation": 0.0,
+            "daily_consumption": 0.0,
+            "daily_feed_in": 0.0,
+            "average_daily_use": 0.0,
+        }
+        
+        if not self._logged_in:
+            return data
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Referer": self.dashboard_url
+        }
+        
+        # Pages to scrape for energy data
+        pages_to_scrape = [
+            (self.dashboard_url, "dashboard"),
+            ("https://secure.meridianenergy.co.nz/usage", "usage"),
+            ("https://secure.meridianenergy.co.nz/feed_in_report", "feed_in"),
+            ("https://secure.meridianenergy.co.nz/billing", "billing"),
+            ("https://secure.meridianenergy.co.nz/account", "account"),
+        ]
+        
+        for url, page_type in pages_to_scrape:
+            try:
+                async with self._session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        html = await response.text()
+                        _LOGGER.debug(f"Scraping {page_type} page for energy data...")
+                        
+                        # Extract kWh values
+                        kwh_patterns = [
+                            r'(\d+\.?\d*)\s*kWh',
+                            r'(\d+\.?\d*)\s*kwh',
+                            r'(\d+\.?\d*)\s*kw',
+                            r'(\d+\.?\d*)\s*kilowatt',
+                        ]
+                        
+                        for pattern in kwh_patterns:
+                            matches = re.findall(pattern, html, re.IGNORECASE)
+                            if matches:
+                                _LOGGER.debug(f"Found kWh values on {page_type}: {matches[:5]}")
+                                try:
+                                    # Try to assign the first reasonable value
+                                    value = float(matches[0])
+                                    if 0 < value < 1000:  # Reasonable energy value
+                                        if page_type == "usage" and data["daily_consumption"] == 0.0:
+                                            data["daily_consumption"] = value
+                                        elif page_type == "feed_in" and data["daily_feed_in"] == 0.0:
+                                            data["daily_feed_in"] = value
+                                        elif data["solar_generation"] == 0.0:
+                                            data["solar_generation"] = value
+                                except (ValueError, IndexError):
+                                    continue
+                        
+                        # Extract dollar amounts (could indicate rates)
+                        dollar_patterns = [
+                            r'\$(\d+\.?\d*)',
+                            r'(\d+\.?\d*)\s*cents?',
+                            r'(\d+\.?\d*)\s*c/kWh',
+                        ]
+                        
+                        for pattern in dollar_patterns:
+                            matches = re.findall(pattern, html, re.IGNORECASE)
+                            if matches:
+                                _LOGGER.debug(f"Found dollar values on {page_type}: {matches[:3]}")
+                                try:
+                                    value = float(matches[0])
+                                    if 0 < value < 1:  # Could be a rate
+                                        if data["current_rate"] == 0.25:  # Still default
+                                            data["current_rate"] = value
+                                            data["next_rate"] = value
+                                except (ValueError, IndexError):
+                                    continue
+                        
+                        # Look for specific energy terms with numbers
+                        energy_patterns = [
+                            r'generation[:\s]*(\d+\.?\d*)',
+                            r'solar[:\s]*(\d+\.?\d*)',
+                            r'feed.?in[:\s]*(\d+\.?\d*)',
+                            r'export[:\s]*(\d+\.?\d*)',
+                            r'consumption[:\s]*(\d+\.?\d*)',
+                            r'usage[:\s]*(\d+\.?\d*)',
+                            r'daily[:\s]*(\d+\.?\d*)',
+                            r'average[:\s]*(\d+\.?\d*)',
+                        ]
+                        
+                        for pattern in energy_patterns:
+                            matches = re.findall(pattern, html, re.IGNORECASE)
+                            if matches:
+                                _LOGGER.debug(f"Found energy pattern on {page_type}: {pattern} = {matches[:3]}")
+                                
+            except Exception as e:
+                _LOGGER.debug(f"Error scraping {page_type} page: {e}")
+                continue
+        
+        _LOGGER.debug(f"Scraped data from pages: {data}")
+        return data
 
     async def _async_update_data(self):
         """Fetch data from Meridian Customer Portal."""
@@ -802,11 +938,11 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("Stopping coordinator and closing session...")
         if self._session and not self._session.closed:
             try:
-                await self._session.close()
+            await self._session.close()
             except Exception as e:
                 _LOGGER.debug(f"Error closing session: {e}")
             finally:
-                self._session = None
+            self._session = None
                 self._logged_in = False
 
     async def get_historical_data(self, days: int = 7) -> dict:
@@ -814,7 +950,7 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
         # This would require more complex scraping of historical pages
         # For now, return empty data
         _LOGGER.warning("Historical data not yet implemented for portal scraping")
-        return {}
+        return {} 
 
     async def run_all_tests(self) -> dict[str, bool]:
         """Run all portal tests for debugging."""
