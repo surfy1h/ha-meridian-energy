@@ -7,7 +7,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -107,8 +107,8 @@ class MeridianSolarGenerationSensor(MeridianSolarBaseSensor):
     def __init__(self, coordinator):
         """Initialize the sensor."""
         super().__init__(coordinator, "Meridian Solar Generation", "meridian_solar_generation")
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+        self._attr_device_class = SensorDeviceClass.POWER
         self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
@@ -163,7 +163,7 @@ class MeridianSolarAverageDailyUseSensor(MeridianSolarBaseSensor):
         super().__init__(coordinator, "Meridian Solar Average Daily Use", "meridian_solar_average_daily_use")
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
-        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_state_class = None  # Average values don't need state class
 
     @property
     def native_value(self):
