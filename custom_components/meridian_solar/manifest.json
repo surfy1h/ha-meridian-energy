@@ -1,0 +1,13 @@
+{
+  "domain": "meridian_solar",
+  "name": "Meridian Solar",
+  "documentation": "https://github.com/yourusername/ha-meridian-solar",
+  "dependencies": [],
+  "codeowners": ["@yourusername"],
+  "requirements": ["aiohttp>=3.9.0"],
+  "iot_class": "cloud_polling",
+  "version": "2.1.0",
+  "config_flow": true,
+  "homeassistant": "2024.1.0",
+  "diagnostics": true
+} 

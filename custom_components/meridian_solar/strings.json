@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Meridian Solar Setup",
+        "description": "Enter your Meridian Energy customer portal credentials.",
+        "data": {
+          "username": "Username (Email)",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Meridian Energy customer portal. Please check your credentials and try again.",
+      "auth": "Authentication failed. Please verify your username and password.",
+      "unknown": "Unknown error occurred."
+    },
+    "abort": {
+      "already_configured": "This account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Meridian Solar Options",
+        "description": "Configure update intervals and other options.",
+        "data": {
+          "scan_interval": "Update interval (minutes)",
+          "history_days": "Historical data days"
+        }
+      }
+    }
+  }
+}

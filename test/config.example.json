@@ -1,0 +1,9 @@
+{
+    "username": "jonosm@protonmail.com",
+    "password": "Infowars01#",
+    "test_settings": {
+        "history_days": 7,
+        "timeout_seconds": 30,
+        "verbose": true
+    }
+}
