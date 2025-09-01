@@ -367,10 +367,12 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                     
                     html = await response.text()
                     
-                    # Look for usage chart indicators
+                    # Look for usage chart indicators (more flexible patterns)
                     usage_indicators = [
                         'average daily use', 'daily usage', 'usage chart', 'power usage',
-                        'consumption', 'kwh', 'daily average', 'usage pattern'
+                        'consumption', 'kwh', 'daily average', 'usage pattern',
+                        'energy', 'electricity', 'meter', 'usage', 'daily', 'monthly',
+                        'cost', 'bill', 'kw', 'kilowatt'
                     ]
                     
                     found_indicators = []
@@ -378,8 +380,12 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                         if indicator.lower() in html.lower():
                             found_indicators.append(indicator)
                     
-                    if found_indicators:
-                        _LOGGER.debug(f"Usage chart page accessible. Found indicators: {', '.join(found_indicators[:5])}...")
+                    # More tolerant - accept page if we find any energy-related indicators
+                    if found_indicators or len(html) > 1000:  # Accept if indicators found OR page has content
+                        if found_indicators:
+                            _LOGGER.debug(f"Usage chart page accessible. Found indicators: {', '.join(found_indicators[:5])}...")
+                        else:
+                            _LOGGER.debug("Usage chart page accessible. No specific indicators but page has content, proceeding...")
                         
                         # Look for specific usage data patterns
                         usage_patterns = [
@@ -435,10 +441,12 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                 if response.status == 200:
                     html = await response.text()
                     
-                    # Look for solar/feed-in specific indicators
+                    # Look for solar/feed-in specific indicators (more flexible patterns)
                     solar_indicators = [
                         'feed in', 'feed-in', 'solar', 'generation', 'export', 
-                        'heatmap', 'csv', 'download', 'kwh', 'half hour'
+                        'heatmap', 'csv', 'download', 'kwh', 'half hour',
+                        'import', 'energy', 'electricity', 'meter', 'grid',
+                        'kw', 'kilowatt', 'production', 'generated'
                     ]
                     
                     found_indicators = []
@@ -446,8 +454,12 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                         if indicator.lower() in html.lower():
                             found_indicators.append(indicator)
                     
-                    if found_indicators:
-                        _LOGGER.debug(f"Feed-in report page accessible. Found indicators: {', '.join(found_indicators[:5])}...")
+                    # More tolerant - accept page if we find any energy-related indicators  
+                    if found_indicators or len(html) > 1000:  # Accept if indicators found OR page has content
+                        if found_indicators:
+                            _LOGGER.debug(f"Feed-in report page accessible. Found indicators: {', '.join(found_indicators[:5])}...")
+                        else:
+                            _LOGGER.debug("Feed-in report page accessible. No specific indicators but page has content, proceeding...")
                         
                         # Look for specific solar data patterns
                         solar_patterns = [
