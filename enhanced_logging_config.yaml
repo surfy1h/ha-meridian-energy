@@ -1,0 +1,56 @@
+# Enhanced Home Assistant Logging Configuration for Meridian Solar Debugging
+# Add this to your configuration.yaml file
+
+logger:
+  default: info
+  logs:
+    # Meridian Solar Integration - All components
+    custom_components.meridian_solar: debug
+    custom_components.meridian_solar.sensor: debug  
+    custom_components.meridian_solar.config_flow: debug
+    
+    # Home Assistant Core Components for debugging sensor issues
+    homeassistant.components.sensor: info
+    homeassistant.helpers.update_coordinator: debug
+    homeassistant.helpers.entity: debug
+    homeassistant.config_entries: debug
+    
+    # HTTP/Network debugging (if needed for connection issues)
+    # aiohttp.access: info
+    # aiohttp.client: debug
+
+# Alternative: File logging with rotation (more detailed)
+# Uncomment and modify if you want persistent logs
+#
+# logger:
+#   default: info
+#   logs:
+#     custom_components.meridian_solar: debug
+#   handlers:
+#     meridian_file:
+#       class: logging.handlers.RotatingFileHandler
+#       level: DEBUG
+#       filename: /config/logs/meridian_solar.log
+#       maxBytes: 10485760  # 10MB
+#       backupCount: 5
+#       formatter: homeassistant
+#   loggers:
+#     custom_components.meridian_solar:
+#       handlers: [meridian_file, default]
+#       level: DEBUG
+#       propagate: false
+
+# USAGE INSTRUCTIONS:
+# 1. Add the logger section to your configuration.yaml
+# 2. Restart Home Assistant
+# 3. Go to Settings → System → Logs  
+# 4. Look for entries containing "meridian_solar"
+# 5. You can also filter by log level (Debug, Info, Warning, Error)
+#
+# WHAT TO LOOK FOR:
+# - 🔄 "Starting data update cycle" - Shows when coordinator runs
+# - 🔐 "Starting authentication process" - Shows login attempts  
+# - 📥 "Starting CSV data extraction" - Shows data fetching
+# - ✅ "Successfully extracted data" - Shows successful data retrieval
+# - ❌ "UpdateFailed exception" - Shows what's causing unavailable sensors
+# - 📊 "Raw data" - Shows actual sensor values being extracted

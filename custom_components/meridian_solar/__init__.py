@@ -23,6 +23,9 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Enable more detailed logging for debugging
+_LOGGER.setLevel(logging.DEBUG)
+
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 SCAN_INTERVAL = timedelta(minutes=30)
 
@@ -211,7 +214,8 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _authenticate(self) -> bool:
         """Authenticate with Meridian Customer Portal."""
-        _LOGGER.debug("Testing authentication...")
+        _LOGGER.info("🔐 Starting authentication process...")
+        _LOGGER.debug(f"Username: {self.username}")
         
         # First get the login page
         if not await self._get_login_page():
@@ -559,7 +563,8 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _extract_data_from_csv(self) -> dict[str, Any]:
         """Extract solar and usage data from CSV download."""
-        _LOGGER.debug("Testing CSV data extraction...")
+        _LOGGER.info("📥 Starting CSV data extraction...")
+        _LOGGER.debug("Checking authentication status for CSV download")
         
         if not self._logged_in:
             await self._authenticate()
@@ -817,15 +822,22 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self):
         """Fetch data from Meridian Customer Portal."""
-        _LOGGER.debug("Starting data update...")
+        _LOGGER.info("🔄 Starting data update cycle...")
+        _LOGGER.debug(f"Session state: logged_in={self._logged_in}, retry_count={self._retry_count}")
         
         try:
             # Reset retry count for each update cycle
             self._retry_count = 0
             
+            _LOGGER.debug("🌐 Calling _extract_data_from_portal()...")
             data = await self._extract_data_from_portal()
             
-            _LOGGER.debug("Updated data: current_rate=%s, next_rate=%s, solar_generation=%s, "
+            if data is None:
+                _LOGGER.error("❌ _extract_data_from_portal() returned None")
+                raise UpdateFailed("Portal extraction returned no data")
+            
+            _LOGGER.info("✅ Successfully extracted data from portal")
+            _LOGGER.debug("📊 Raw data: current_rate=%s, next_rate=%s, solar_generation=%s, "
                          "daily_consumption=%s, daily_feed_in=%s, average_daily_use=%s", 
                          data.get("current_rate"), data.get("next_rate"), data.get("solar_generation"),
                          data.get("daily_consumption"), data.get("daily_feed_in"), data.get("average_daily_use"))
@@ -834,16 +846,23 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
             required_keys = ["current_rate", "next_rate", "solar_generation", "daily_consumption", "daily_feed_in"]
             for key in required_keys:
                 if key not in data:
-                    _LOGGER.warning(f"Missing required data key: {key}")
+                    _LOGGER.warning(f"⚠️ Missing required data key: {key}, setting to 0.0")
                     data[key] = 0.0
 
+            _LOGGER.info("✅ Data validation complete, returning to coordinator")
             return data
 
-        except UpdateFailed:
-            # Re-raise UpdateFailed exceptions as-is
+        except UpdateFailed as update_err:
+            # Re-raise UpdateFailed exceptions as-is but with more logging
+            _LOGGER.error(f"❌ UpdateFailed exception: {update_err}")
             raise
         except Exception as err:
-            _LOGGER.error("Error communicating with portal: %s", err)
+            _LOGGER.error(f"❌ Unexpected error in data update: {err}")
+            _LOGGER.error(f"Exception type: {type(err).__name__}")
+            # Log full traceback for debugging
+            import traceback
+            _LOGGER.debug(f"Full traceback: {traceback.format_exc()}")
+            raise UpdateFailed(f"Error communicating with portal: {err}")
             
             # Try to close and recreate session on error
             if self._session and not self._session.closed:
