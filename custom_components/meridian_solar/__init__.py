@@ -588,10 +588,13 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
             if len(lines) < 2:
                 raise UpdateFailed("CSV data is empty or invalid")
             
-            # Initialize data
+            # Initialize data with real rate extraction
+            _LOGGER.debug("Extracting real electricity rates...")
+            rates = await self._extract_rate_information()
+            
             data = {
-                "current_rate": 0.25,  # Default rate estimate
-                "next_rate": 0.25,
+                "current_rate": rates["current_rate"],
+                "next_rate": rates["next_rate"],
                 "solar_generation": 0.0,
                 "daily_consumption": 0.0,
                 "daily_feed_in": 0.0,
@@ -738,10 +741,13 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                         # Try to get usage data from usage chart page
                         usage_data = await self._extract_usage_chart_data()
                         
-                        # Return basic data structure with any found usage data
+                        # Extract real rate information
+                        rates = await self._extract_rate_information()
+                        
+                        # Return basic data structure with any found usage data and real rates
                         return {
-                            "current_rate": 0.25,
-                            "next_rate": 0.25,
+                            "current_rate": rates["current_rate"],
+                            "next_rate": rates["next_rate"],
                             "solar_generation": 0.0,
                             "daily_consumption": 0.0,
                             "daily_feed_in": 0.0,
@@ -754,10 +760,16 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning(f"Portal scraping error: {portal_err}")
                 _LOGGER.info("Returning default values to prevent sensor unavailability")
                 
+                # Try to extract rates even if other data failed
+                try:
+                    rates = await self._extract_rate_information()
+                except Exception:
+                    rates = {"current_rate": 0.25, "next_rate": 0.25}
+                
                 # Return default data so sensors show something instead of "Unavailable"
                 return {
-                    "current_rate": 0.25,  # Default NZ electricity rate
-                    "next_rate": 0.25,
+                    "current_rate": rates["current_rate"],
+                    "next_rate": rates["next_rate"],
                     "solar_generation": 0.0,  # No current generation data
                     "daily_consumption": 0.0,  # No current consumption data
                     "daily_feed_in": 0.0,  # No current feed-in data
@@ -818,7 +830,97 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error(f"Endpoint discovery error: {e}")
             return False
 
-
+    async def _extract_rate_information(self) -> dict[str, float]:
+        """Extract current and next electricity rates from Meridian portal."""
+        _LOGGER.debug("🔍 Extracting rate information from portal...")
+        
+        if not self._logged_in:
+            await self._authenticate()
+        
+        rates = {"current_rate": 0.25, "next_rate": 0.25}  # Default fallbacks
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": self.dashboard_url
+        }
+        
+        # Pages that might contain rate information
+        rate_pages = [
+            (self.dashboard_url, "dashboard"),
+            ("https://secure.meridianenergy.co.nz/billing", "billing"),
+            ("https://secure.meridianenergy.co.nz/account", "account"),
+            ("https://secure.meridianenergy.co.nz/usage", "usage"),
+            ("https://secure.meridianenergy.co.nz/rates", "rates"),
+        ]
+        
+        for url, page_type in rate_pages:
+            try:
+                async with self._session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        html = await response.text()
+                        _LOGGER.debug(f"Checking {page_type} page for rate information...")
+                        
+                        # Look for rate patterns in various formats
+                        rate_patterns = [
+                            # Standard rate formats
+                            r'(\d+\.?\d*)\s*c(?:ents)?/kWh',  # e.g., "25.5 c/kWh"
+                            r'(\d+\.?\d*)\s*cents?\s*per\s*kWh',  # e.g., "25.5 cents per kWh"
+                            r'\$(\d+\.?\d*)\s*per\s*kWh',  # e.g., "$0.255 per kWh"
+                            r'Rate[:\s]*\$?(\d+\.?\d*)',  # e.g., "Rate: $0.255"
+                            r'Price[:\s]*\$?(\d+\.?\d*)',  # e.g., "Price: 0.255"
+                            r'(\d+\.?\d*)\s*¢/kWh',  # e.g., "25.5¢/kWh"
+                            
+                            # Table/structured formats
+                            r'<td[^>]*>\s*\$?(\d+\.?\d*)\s*</td>',  # Table cells
+                            r'current[^>]*rate[^>]*[:\s]*\$?(\d+\.?\d*)',  # Current rate
+                            r'next[^>]*rate[^>]*[:\s]*\$?(\d+\.?\d*)',  # Next rate
+                            
+                            # JSON-like formats (if rates in data attributes)
+                            r'"rate"[:\s]*(\d+\.?\d*)',
+                            r'"current_rate"[:\s]*(\d+\.?\d*)',
+                            r'"next_rate"[:\s]*(\d+\.?\d*)',
+                        ]
+                        
+                        found_rates = []
+                        for pattern in rate_patterns:
+                            matches = re.findall(pattern, html, re.IGNORECASE)
+                            for match in matches:
+                                try:
+                                    rate = float(match)
+                                    # Convert cents to dollars if rate is high (assume cents)
+                                    if rate > 10:  # Likely in cents
+                                        rate = rate / 100
+                                    # Reasonable rate range for NZ (0.15 - 0.50 $/kWh)
+                                    if 0.15 <= rate <= 0.50:
+                                        found_rates.append(rate)
+                                        _LOGGER.debug(f"Found potential rate on {page_type}: {rate} $/kWh")
+                                except ValueError:
+                                    continue
+                        
+                        # Use the most common rate found, or first reasonable rate
+                        if found_rates:
+                            # Use the most frequent rate (mode) or median
+                            from collections import Counter
+                            if len(found_rates) > 1:
+                                rate_counts = Counter(found_rates)
+                                most_common_rate = rate_counts.most_common(1)[0][0]
+                                rates["current_rate"] = most_common_rate
+                                rates["next_rate"] = most_common_rate
+                                _LOGGER.info(f"✅ Extracted rate from {page_type}: {most_common_rate} $/kWh")
+                            else:
+                                rates["current_rate"] = found_rates[0]
+                                rates["next_rate"] = found_rates[0]
+                                _LOGGER.info(f"✅ Extracted rate from {page_type}: {found_rates[0]} $/kWh")
+                            break  # Found rates, stop searching
+                            
+            except Exception as e:
+                _LOGGER.debug(f"Error checking {page_type} for rates: {e}")
+                continue
+        
+        if rates["current_rate"] == 0.25:
+            _LOGGER.warning("⚠️ Could not extract real rates, using default 0.25 $/kWh")
+        
+        return rates
 
     async def _async_update_data(self):
         """Fetch data from Meridian Customer Portal."""
