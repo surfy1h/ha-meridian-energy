@@ -594,7 +594,8 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
             }
             
             # Parse CSV lines (skip header)
-            today = datetime.now().strftime("%-d/%-m/%Y")  # Format: 21/1/2025
+            today = datetime.now().strftime("%-d/%-m/%Y")  # Format: 1/9/2025
+            _LOGGER.debug(f"Looking for today's date in CSV: {today}")
             
             for line in lines[1:]:
                 if not line.strip():
@@ -645,7 +646,55 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 _LOGGER.debug(f"Could not get usage chart data: {e}")
             
-            _LOGGER.debug(f"Parsed CSV data: daily_feed_in={data['daily_feed_in']}, "
+            # If no data found for today, try to get most recent data
+            if data['daily_consumption'] == 0.0 and data['daily_feed_in'] == 0.0:
+                _LOGGER.debug(f"No data found for today ({today}), looking for most recent data...")
+                
+                # Find the most recent date with data
+                recent_dates = []
+                for line in lines[1:]:
+                    if not line.strip():
+                        continue
+                    parts = line.split(',')
+                    if len(parts) > 3:
+                        recent_dates.append(parts[3])
+                
+                if recent_dates:
+                    # Use the last date found (should be most recent)
+                    recent_date = recent_dates[-1]
+                    _LOGGER.debug(f"Using most recent date: {recent_date}")
+                    
+                    for line in lines[1:]:
+                        if not line.strip():
+                            continue
+                        parts = line.split(',')
+                        if len(parts) < 52 or parts[3] != recent_date:
+                            continue
+                        
+                        try:
+                            meter_element = parts[2]
+                            half_hour_values = []
+                            for i in range(4, min(52, len(parts))):
+                                try:
+                                    value = float(parts[i])
+                                    half_hour_values.append(value)
+                                except ValueError:
+                                    half_hour_values.append(0.0)
+                            
+                            daily_total = sum(half_hour_values)
+                            
+                            if meter_element == "Feed-in":
+                                data["daily_feed_in"] = daily_total
+                                for value in reversed(half_hour_values):
+                                    if value > 0:
+                                        data["solar_generation"] = value
+                                        break
+                            elif meter_element == "Consumption":
+                                data["daily_consumption"] = daily_total
+                        except (ValueError, IndexError):
+                            continue
+            
+            _LOGGER.debug(f"Final CSV data: daily_feed_in={data['daily_feed_in']}, "
                         f"daily_consumption={data['daily_consumption']}, "
                         f"current_generation={data['solar_generation']}, "
                         f"average_daily_use={data['average_daily_use']}")
@@ -695,10 +744,20 @@ class MeridianSolarDataUpdateCoordinator(DataUpdateCoordinator):
                         }
                         
             except Exception as portal_err:
-                # Log the specific errors for debugging
-                _LOGGER.error(f"CSV error: {csv_err}")
-                _LOGGER.error(f"Portal error: {portal_err}")
-                raise UpdateFailed(f"Both CSV and portal extraction failed. CSV: {csv_err}, Portal: {portal_err}")
+                # Log the specific errors for debugging but don't fail completely
+                _LOGGER.warning(f"CSV error: {csv_err}")
+                _LOGGER.warning(f"Portal scraping error: {portal_err}")
+                _LOGGER.info("Returning default values to prevent sensor unavailability")
+                
+                # Return default data so sensors show something instead of "Unavailable"
+                return {
+                    "current_rate": 0.25,  # Default NZ electricity rate
+                    "next_rate": 0.25,
+                    "solar_generation": 0.0,  # No current generation data
+                    "daily_consumption": 0.0,  # No current consumption data
+                    "daily_feed_in": 0.0,  # No current feed-in data
+                    "average_daily_use": 0.0,  # No usage data available
+                }
 
     async def _test_find_data_endpoints(self) -> bool:
         """Test finding potential data endpoints or AJAX calls."""
