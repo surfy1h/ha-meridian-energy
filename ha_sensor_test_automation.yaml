@@ -1,0 +1,74 @@
+# Home Assistant Automation to Test and Log Meridian Solar Sensors
+# Add this to your automations.yaml or create via HA UI
+
+- alias: "Test Meridian Solar Sensors"
+  description: "Test and log all Meridian Solar sensor values"
+  trigger:
+    # Manual trigger - you can run this from Developer Tools → Services
+    - platform: event
+      event_type: meridian_test_sensors
+    # Or automatic every hour for testing
+    # - platform: time_pattern
+    #   minutes: 0
+  action:
+    - service: system_log.write
+      data:
+        message: "🚀 Testing Meridian Solar Sensors - {{ now() }}"
+        level: info
+        logger: meridian_test
+    
+    # Test Current Rate Sensor
+    - service: system_log.write
+      data:
+        message: "📊 Current Rate: {{ states('sensor.meridian_solar_current_rate') }} {{ state_attr('sensor.meridian_solar_current_rate', 'unit_of_measurement') }}"
+        level: info
+        logger: meridian_test
+    
+    # Test Next Rate Sensor  
+    - service: system_log.write
+      data:
+        message: "📊 Next Rate: {{ states('sensor.meridian_solar_next_rate') }} {{ state_attr('sensor.meridian_solar_next_rate', 'unit_of_measurement') }}"
+        level: info
+        logger: meridian_test
+        
+    # Test Daily Consumption
+    - service: system_log.write
+      data:
+        message: "📊 Daily Consumption: {{ states('sensor.meridian_solar_daily_consumption') }} {{ state_attr('sensor.meridian_solar_daily_consumption', 'unit_of_measurement') }}"
+        level: info
+        logger: meridian_test
+        
+    # Test Daily Feed In
+    - service: system_log.write
+      data:
+        message: "📊 Daily Feed In: {{ states('sensor.meridian_solar_daily_feed_in') }} {{ state_attr('sensor.meridian_solar_daily_feed_in', 'unit_of_measurement') }}"
+        level: info
+        logger: meridian_test
+        
+    # Test Solar Generation
+    - service: system_log.write
+      data:
+        message: "📊 Solar Generation: {{ states('sensor.meridian_solar_generation') }} {{ state_attr('sensor.meridian_solar_generation', 'unit_of_measurement') }}"
+        level: info
+        logger: meridian_test
+        
+    # Test Average Daily Use
+    - service: system_log.write
+      data:
+        message: "📊 Average Daily Use: {{ states('sensor.meridian_solar_average_daily_use') }} {{ state_attr('sensor.meridian_solar_average_daily_use', 'unit_of_measurement') }}"
+        level: info
+        logger: meridian_test
+        
+    # Log sensor states
+    - service: system_log.write
+      data:
+        message: "🔍 Sensor States - Available: {{ states.sensor | selectattr('entity_id', 'match', 'sensor.meridian_solar.*') | list | length }}, Unavailable: {{ states.sensor | selectattr('entity_id', 'match', 'sensor.meridian_solar.*') | selectattr('state', 'eq', 'unavailable') | list | length }}"
+        level: info
+        logger: meridian_test
+
+# To use this automation:
+# 1. Add to your automations.yaml or create via HA UI
+# 2. Restart HA or reload automations
+# 3. Go to Developer Tools → Services
+# 4. Call service: "event.fire" with event_type: "meridian_test_sensors"
+# 5. Check logs for results

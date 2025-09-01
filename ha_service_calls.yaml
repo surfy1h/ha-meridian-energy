@@ -1,0 +1,55 @@
+# Home Assistant Service Calls for Testing Meridian Solar Integration
+# Copy these and run them in Developer Tools → Services
+
+# 1. Force Update Coordinator Data
+service: homeassistant.update_entity
+target:
+  entity_id:
+    - sensor.meridian_solar_current_rate
+    - sensor.meridian_solar_next_rate  
+    - sensor.meridian_solar_daily_consumption
+    - sensor.meridian_solar_daily_feed_in
+    - sensor.meridian_solar_generation
+    - sensor.meridian_solar_average_daily_use
+
+---
+
+# 2. Log All Sensor States
+service: system_log.write
+data:
+  message: |
+    Meridian Solar Sensors Status:
+    - Current Rate: {{ states('sensor.meridian_solar_current_rate') }}
+    - Next Rate: {{ states('sensor.meridian_solar_next_rate') }}  
+    - Daily Consumption: {{ states('sensor.meridian_solar_daily_consumption') }}
+    - Daily Feed In: {{ states('sensor.meridian_solar_daily_feed_in') }}
+    - Solar Generation: {{ states('sensor.meridian_solar_generation') }}
+    - Average Daily Use: {{ states('sensor.meridian_solar_average_daily_use') }}
+  level: info
+
+---
+
+# 3. Get Integration Diagnostics
+service: system_log.write  
+data:
+  message: |
+    Meridian Solar Integration Info:
+    - Integration loaded: {{ integration_entities('meridian_solar') | length > 0 }}
+    - Available sensors: {{ states.sensor | selectattr('entity_id', 'match', 'sensor.meridian_solar.*') | selectattr('state', 'ne', 'unavailable') | list | length }}
+    - Unavailable sensors: {{ states.sensor | selectattr('entity_id', 'match', 'sensor.meridian_solar.*') | selectattr('state', 'eq', 'unavailable') | list | length }}
+  level: info
+
+---
+
+# 4. Fire Test Event (if using the automation)
+service: event.fire
+data:
+  event_type: meridian_test_sensors
+
+---
+
+# 5. Check Integration Entry
+service: system_log.write
+data:
+  message: "Meridian Solar config entries: {{ config_entries | selectattr('domain', 'eq', 'meridian_solar') | list | length }}"
+  level: info
